@@ -6,7 +6,7 @@
 TFT_eSPI tft = TFT_eSPI();  // Invoke custom library
 
 // Include the header files that contain the icons
-#include "bmp.h"
+// #include "bmp.h"
 // #include "press.h"
 
 // This is the file name used to store the calibration data
@@ -34,7 +34,7 @@ uint16_t bk_color = tft.color565(65, 0, 87);
 #define KEY_SPACING_Y 10
 #define KEY_TEXTSIZE 1   // Font size multiplier
 
-char keyLabel[12][5] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12" };
+char keyLabel[12][6] = {"1", "2", "3", "Light", "5", "6", "7", "Fan", "9", "10", "11", "Stop" };
 
 TFT_eSPI_Button key[12];
 
@@ -91,27 +91,29 @@ void setup()
 void loop()
 {
   uint16_t t_x = 0, t_y = 0; // To store the touch coordinates
-   
-  
 
   // Pressed will be set true is there is a valid touch on the screen
   boolean pressed = tft.getTouch(&t_x, &t_y);
-  if (pressed){
-    x = (int)(t_x / 80) * 80; y = (int)(t_y / 80) * 80;
-    tft.pushImage(x, y, pressWidth, pressHeight, press);
-    last_x = x; last_y = y;
-    touch = true;
-    Serial.println("Touch");
-    // Serial.println(t_y);
-    // Serial.println(x);
-    // Serial.println(y);
+
+  // / Check if any key coordinate boxes contain the touch coordinates
+  for (uint8_t b = 0; b < 12; b++) {
+    if (pressed && key[b].contains(t_x, t_y)) {
+      key[b].press(true);  // tell the button it is pressed
+    } else {
+      key[b].press(false);  // tell the button it is NOT pressed
+    }
   }
-  if (!pressed && touch){
-    tft.pushImage(last_x, last_y, offWidth, offHeight, off);
-    touch = false;
-    Serial.print("Realise");// Serial.println(SPIFFS.totalBytes());
-    // Serial.print("Used:  "); Serial.println(SPIFFS.usedBytes());
-    tft.drawNumber(last_y+last_x*4+1, last_x+40, last_y+40);
+  for (uint8_t b = 0; b < 12; b++) {
+
+    if (key[b].justReleased()){
+      key[b].drawButton();     // draw normal
+      Serial.print("Key "); Serial.print(b+1); Serial.println("Released");
+    } 
+
+    if (key[b].justPressed()) {
+      key[b].drawButton(true);  // draw invert
+      Serial.print("Key "); Serial.print(b+1); Serial.println("Pressed");
+    }
   }
 }
 
