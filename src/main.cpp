@@ -5,10 +5,6 @@
 
 TFT_eSPI tft = TFT_eSPI();  // Invoke custom library
 
-// Include the header files that contain the icons
-// #include "bmp.h"
-// #include "press.h"
-
 // This is the file name used to store the calibration data
 // You can change this to create new calibration files.
 // The SPIFFS file name must start with "/".
@@ -18,9 +14,9 @@ TFT_eSPI tft = TFT_eSPI();  // Invoke custom library
 // Repeat calibration if you change the screen rotation.
 #define REPEAT_CAL false
 
-long count = 0; // Loop count
-uint16_t x, y, last_x, last_y;
-boolean touch;
+// long count = 0; // Loop count
+// uint16_t x, y, last_x, last_y;
+// boolean touch;
 
 uint16_t fr_color = tft.color565(3, 230, 250);
 uint16_t bk_color = tft.color565(65, 0, 87);
@@ -38,37 +34,27 @@ char keyLabel[12][6] = {"1", "2", "3", "Light", "5", "6", "7", "Fan", "9", "10",
 
 TFT_eSPI_Button key[12];
 
+typedef enum { IDLE, PRESSED, JUSTPRESSED, HOLD, RELEASED } KeyState;
+KeyState buttonState[12];
+const char* status_str[5] = { "IDLE", "PRESSED", "JUSTPRESSED", "HOLD", "RELEASED" };
+#define HOLDTIME 1000
+#define CHECK_DELAY 100
+
 void touch_calibrate();
+void check_and_set_button_state();
 
 void setup()
 {
   Serial.begin(115200);
   tft.begin();
   tft.setRotation(3);	// landscape
-
-  // Calibrate the touch screen and retrieve the scaling factors
-  touch_calibrate();
+  tft.setSwapBytes(true); // Swap the colour byte order when rendering
+  
+  touch_calibrate();  // Calibrate the touch screen and retrieve the scaling factors
 
   tft.fillScreen(bk_color);
+  tft.setTextFont(4);
 
-  // Swap the colour byte order when rendering
-  tft.setSwapBytes(true);
-
-  // // Draw the icons
-  // for (size_t y = 0; y < 3; y++)
-  // {
-  //   for (size_t x = 0; x < 4; x++)
-  //   {
-  //     tft.pushImage(x*80, y*80, offWidth, offHeight, off);
-
-      tft.setTextFont(4);
-  //     tft.setTextDatum(CC_DATUM);
-  //     // tft.setTextPadding(tft.textWidth("-123"));
-  //     tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-  //     tft.drawNumber(x+y*4+1, x*80+40, y*80+40);
-  //   }
-    
-  // }
   
 // Draw the keys
   for (uint8_t row = 0; row < 3; row++) {
@@ -90,36 +76,31 @@ void setup()
 
 void loop()
 {
-  uint16_t t_x = 0, t_y = 0; // To store the touch coordinates
+  static uint32_t tmr;
+  if (millis() - tmr > CHECK_DELAY) {
+  tmr = millis();
 
-  // Pressed will be set true is there is a valid touch on the screen
-  boolean pressed = tft.getTouch(&t_x, &t_y);
+  check_and_set_button_state();
 
-  // / Check if any key coordinate boxes contain the touch coordinates
-  for (uint8_t b = 0; b < 12; b++) {
-    if (pressed && key[b].contains(t_x, t_y)) {
-      key[b].press(true);  // tell the button it is pressed
-    } else {
-      key[b].press(false);  // tell the button it is NOT pressed
-    }
-  }
   for (uint8_t b = 0; b < 12; b++) {
 
-    if (key[b].justReleased()){
+    if (buttonState[b] == RELEASED){
       key[b].drawButton();     // draw normal
-      Serial.print("Key "); Serial.print(b+1); Serial.println("Released");
+      // Serial.print("Key "); Serial.print(keyLabel[b]); Serial.println(" Released");
     } 
 
-    if (key[b].justPressed()) {
+    if (buttonState[b] == JUSTPRESSED) {
       key[b].drawButton(true);  // draw invert
-      Serial.print("Key "); Serial.print(b+1); Serial.println("Pressed");
     }
+
+    if (buttonState[b] != IDLE) {Serial.print("Key "); Serial.print(keyLabel[b]); Serial.println(status_str[buttonState[b]]);}
+  }
   }
 }
 
 
-void touch_calibrate()
-{
+void touch_calibrate() {
+  
   uint16_t calData[5];
   uint8_t calDataOK = 0;
 
@@ -179,6 +160,60 @@ void touch_calibrate()
     if (f) {
       f.write((const unsigned char *)calData, 14);
       f.close();
+    }
+  }
+}
+
+void check_and_set_button_state() {
+  uint16_t t_x = 0, t_y = 0;                   // To store the touch coordinates
+  boolean pressed = tft.getTouch(&t_x, &t_y);  // Pressed will be set true is there is a valid touch on the screen
+  static uint32_t hold_tmr;
+
+  // / Check if any key coordinate boxes contain the touch coordinates
+  for (uint8_t b = 0; b < 12; b++) {
+    if (pressed && key[b].contains(t_x, t_y)) {
+      switch (buttonState[b]){
+            case IDLE:
+                buttonState[b] = JUSTPRESSED;
+                hold_tmr = millis();
+                break;
+
+            case JUSTPRESSED:
+                buttonState[b] = PRESSED;
+                break;
+                
+            case RELEASED:
+                buttonState[b] = IDLE;
+                break;
+
+            case PRESSED:
+                if (millis() - hold_tmr > HOLDTIME) {buttonState[b] = HOLD;}
+                break;
+
+            case HOLD:
+                break;
+        }
+    } else {
+      switch (buttonState[b]){
+            case PRESSED:
+                buttonState[b] = RELEASED;
+                break;
+
+            case RELEASED:
+                buttonState[b] = IDLE;
+                break;
+
+            case JUSTPRESSED:
+                buttonState[b] = RELEASED;
+                break;
+
+            case HOLD:
+                buttonState[b] = RELEASED;
+                break;
+
+            case IDLE:
+                break;
+        }
     }
   }
 }

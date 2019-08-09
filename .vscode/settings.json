@@ -6,5 +6,8 @@
     "files.associations": {
         "*.tcc": "cpp",
         "fstream": "cpp"
+    },
+    "files.exclude": {
+        "**/.git": false
     }
 }
