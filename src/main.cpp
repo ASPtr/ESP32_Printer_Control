@@ -42,6 +42,7 @@ const char* status_str[5] = { "IDLE", "PRESSED", "JUSTPRESSED", "HOLD", "RELEASE
 
 void touch_calibrate();
 void check_and_set_button_state();
+void drawXBM();
 
 void setup()
 {
@@ -55,6 +56,8 @@ void setup()
   tft.fillScreen(bk_color);
   tft.setTextFont(4);
 
+  drawXBM();
+  delay(10000);
   
 // Draw the keys
   for (uint8_t row = 0; row < 3; row++) {
@@ -216,4 +219,57 @@ void check_and_set_button_state() {
         }
     }
   }
+}
+
+void drawXBM(){
+  // SPIFFS.open("lamp.xbm", "r")
+  // xbm_data = file.read()
+  // SPIFFS.close()
+  // tft.drawXBitmap(x, y, logo, logoWidth, logoHeight, TFT_WHITE);
+
+  const char *filename = "lamp.xbm";
+  if (!filename) return;
+  Serial.print("Reading ");
+  Serial.println(filename);
+  if (!SPIFFS.exists(filename)) {
+    Serial.println("File not found");
+    return;
+  }
+  File imagefile = SPIFFS.open(filename);
+  String xbm;
+  int16_t imageWidth=0, imageHeight=0;
+  uint8_t imageBits[imagefile.size()/4]; //This seems inefficient
+  uint16_t pos = 0;
+  const char CR = 10;
+  const char comma = 44;
+  while(imagefile.available()) {
+    char next = imagefile.read();
+    if (next == CR) {
+      if (xbm.indexOf("#define") == 0) {
+        if (xbm.indexOf("_width ")>0) {
+          xbm.remove(0,xbm.lastIndexOf(" "));
+          imageWidth = xbm.toInt();
+          if (imageWidth > 320) {
+            Serial.println("Image too large for screen");
+            return;
+          }
+        } 
+        if (xbm.indexOf("_height ")>0) {
+          xbm.remove(0,xbm.lastIndexOf(" "));
+          imageHeight=xbm.toInt();
+          if (imageHeight > 240) {
+            Serial.println("Image too large for screen");
+            return;
+          }
+        }
+      }
+      xbm = "";
+    } else if (next == comma) {
+      imageBits[pos++] = (uint8_t) strtol(xbm.c_str(), NULL, 16);
+      xbm = "";
+    } else {xbm += next;}
+  }
+  imageBits[pos++] = (int) strtol(xbm.c_str(), NULL, 16); //turn the string into a character
+  imageBits[pos]=0;
+  tft.drawXBitmap(10, 10, imageBits, imageWidth, imageHeight, TFT_YELLOW);
 }
