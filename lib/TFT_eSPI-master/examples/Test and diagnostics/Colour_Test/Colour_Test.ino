@@ -78,7 +78,7 @@ void setup(void) {
   tft.setTextColor(TFT_BLUE, TFT_BLACK);
   tft.println("Blue text");
 
-  delay(5000);
+  delay(10000);
 
 }
 
@@ -104,7 +104,7 @@ void loop() {
   tft.setTextColor(TFT_BLUE, TFT_BLACK);
   tft.println("Blue text");
 
-  delay(5000);
+  delay(10000);
 
 
   // Binary inversion of colours
@@ -128,5 +128,5 @@ void loop() {
   tft.setTextColor(TFT_BLUE, TFT_BLACK);
   tft.println("Blue text");
 
-  delay(5000);
+  delay(10000);
 }

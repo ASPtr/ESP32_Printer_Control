@@ -75,15 +75,22 @@ TFT_eSPI_Button key[15];
 
 //------------------------------------------------------------------------------------------
 
+void status(const char *msg);
+void drawKeypad();
+void touch_calibrate();
+
+
+
+
 void setup() {
   // Use serial port
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   // Initialise the TFT screen
   tft.init();
 
   // Set the rotation before we calibrate
-  tft.setRotation(0);
+  tft.setRotation(2);
 
   // Calibrate the touch screen and retrieve the scaling factors
   touch_calibrate();
@@ -152,7 +159,9 @@ void loop(void) {
 
       if (b == 2) {
         status("Sent value to serial port");
+        Serial.println("numberBuffer");
         Serial.println(numberBuffer);
+        
       }
       // we dont really check that the text field makes sense
       // just try to call

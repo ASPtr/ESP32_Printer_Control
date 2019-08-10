@@ -227,7 +227,7 @@ void drawXBM(){
   // SPIFFS.close()
   // tft.drawXBitmap(x, y, logo, logoWidth, logoHeight, TFT_WHITE);
 
-  const char *filename = "lamp.xbm";
+  const char *filename = "/lamp.xbm";
   if (!filename) return;
   Serial.print("Reading ");
   Serial.println(filename);

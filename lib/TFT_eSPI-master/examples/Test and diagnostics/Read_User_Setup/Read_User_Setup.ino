@@ -149,7 +149,5 @@ int8_t getPinName(int8_t pin)
   if (pin ==  1) return 10;
   if (pin ==  9) return 11;
   if (pin == 10) return 12;
-
-  return -1; // Invalid pin
 }
 
