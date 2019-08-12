@@ -30,7 +30,8 @@ uint16_t bk_color = tft.color565(65, 0, 87);
 #define KEY_SPACING_Y 10
 #define KEY_TEXTSIZE 1   // Font size multiplier
 
-char keyLabel[12][6] = {"1", "2", "3", "Light", "5", "6", "7", "Fan", "9", "10", "11", "Stop" };
+String keyLabel[12] = {"/lamp.xbm", "2", "3", "Light", "5", "6", "7", "Fan", "9", "10", "11", "Stop" };
+uint8_t imageBits[512];
 
 TFT_eSPI_Button key[12];
 
@@ -42,7 +43,8 @@ const char* status_str[5] = { "IDLE", "PRESSED", "JUSTPRESSED", "HOLD", "RELEASE
 
 void touch_calibrate();
 void check_and_set_button_state();
-void drawXBM();
+void drawXBM(String filename);
+void draw_button(uint8_t n, bool invert);
 
 void setup()
 {
@@ -55,24 +57,29 @@ void setup()
 
   tft.fillScreen(bk_color);
   tft.setTextFont(4);
+  tft.setTextDatum(CC_DATUM);
 
-  drawXBM();
-  delay(10000);
+  // drawXBM();
+  // delay(10000);
   
 // Draw the keys
-  for (uint8_t row = 0; row < 3; row++) {
-    for (uint8_t col = 0; col < 4; col++) {
-      uint8_t b = col + row * 4;
+  // for (uint8_t row = 0; row < 3; row++) {
+  //   for (uint8_t col = 0; col < 4; col++) {
+  //     uint8_t b = col + row * 4;
 
-      // if (b < 3) tft.setFreeFont(LABEL1_FONT);
-      // else tft.setFreeFont(LABEL2_FONT);
+  //     // if (b < 3) tft.setFreeFont(LABEL1_FONT);
+  //     // else tft.setFreeFont(LABEL2_FONT);
 
-      key[b].initButton(&tft, KEY_X + col * (KEY_W + KEY_SPACING_X),
-                        KEY_Y + row * (KEY_H + KEY_SPACING_Y), // x, y, w, h, outline, fill, text
-                        KEY_W, KEY_H, fr_color, bk_color, fr_color,
-                        keyLabel[b], KEY_TEXTSIZE);
-      key[b].drawButton();
-    }
+  //     key[b].initButton(&tft, KEY_X + col * (KEY_W + KEY_SPACING_X),
+  //                       KEY_Y + row * (KEY_H + KEY_SPACING_Y), // x, y, w, h, outline, fill, text
+  //                       KEY_W, KEY_H, fr_color, bk_color, fr_color,
+  //                       "", KEY_TEXTSIZE);
+  //     key[b].drawButton();
+  //   }
+  // }
+
+  for (uint8_t n = 0; n < 12; n++) {
+      draw_button(n, 0);
   }
 
 }
@@ -88,12 +95,14 @@ void loop()
   for (uint8_t b = 0; b < 12; b++) {
 
     if (buttonState[b] == RELEASED){
-      key[b].drawButton();     // draw normal
+      // key[b].drawButton();     // draw normal
       // Serial.print("Key "); Serial.print(keyLabel[b]); Serial.println(" Released");
+      draw_button(b, 0);
     } 
 
     if (buttonState[b] == JUSTPRESSED) {
-      key[b].drawButton(true);  // draw invert
+      // key[b].drawButton(true);  // draw invert
+      draw_button(b, 1);
     }
 
     if (buttonState[b] != IDLE) {Serial.print("Key "); Serial.print(keyLabel[b]); Serial.println(status_str[buttonState[b]]);}
@@ -221,24 +230,24 @@ void check_and_set_button_state() {
   }
 }
 
-void drawXBM(){
+void drawXBM(String filename){
   // SPIFFS.open("lamp.xbm", "r")
   // xbm_data = file.read()
   // SPIFFS.close()
   // tft.drawXBitmap(x, y, logo, logoWidth, logoHeight, TFT_WHITE);
 
-  const char *filename = "/lamp.xbm";
-  if (!filename) return;
-  Serial.print("Reading ");
-  Serial.println(filename);
+  // const char *filename = "/lamp.xbm";
+  // if (!filename) return;
+  // Serial.print("Reading ");
+  // Serial.println(filename);
   if (!SPIFFS.exists(filename)) {
-    Serial.println("File not found");
+    // Serial.println("File not found");
     return;
   }
   File imagefile = SPIFFS.open(filename);
   String xbm;
   int16_t imageWidth=0, imageHeight=0;
-  uint8_t imageBits[imagefile.size()/4]; //This seems inefficient
+  // uint8_t imageBits[imagefile.size()/4]; //This seems inefficient
   uint16_t pos = 0;
   const char CR = 10;
   const char comma = 44;
@@ -249,18 +258,18 @@ void drawXBM(){
         if (xbm.indexOf("_width ")>0) {
           xbm.remove(0,xbm.lastIndexOf(" "));
           imageWidth = xbm.toInt();
-          if (imageWidth > 320) {
-            Serial.println("Image too large for screen");
-            return;
-          }
+          // if (imageWidth > 320) {
+          //   Serial.println("Image too large for screen");
+          //   return;
+          // }
         } 
         if (xbm.indexOf("_height ")>0) {
           xbm.remove(0,xbm.lastIndexOf(" "));
           imageHeight=xbm.toInt();
-          if (imageHeight > 240) {
-            Serial.println("Image too large for screen");
-            return;
-          }
+          // if (imageHeight > 240) {
+          //   Serial.println("Image too large for screen");
+          //   return;
+          // }
         }
       }
       xbm = "";
@@ -271,5 +280,22 @@ void drawXBM(){
   }
   imageBits[pos++] = (int) strtol(xbm.c_str(), NULL, 16); //turn the string into a character
   imageBits[pos]=0;
-  tft.drawXBitmap(10, 10, imageBits, imageWidth, imageHeight, TFT_YELLOW);
+  // tft.drawXBitmap(10, 10, imageBits, imageWidth, imageHeight, TFT_YELLOW);
+}
+
+void draw_button(uint8_t n, bool invert) {
+  const uint16_t w = 2;
+  const uint16_t r = 10;
+  uint16_t x = (n % 4) * 80;
+  uint16_t y = (int)(n / 4) * 80;
+
+  tft.fillRoundRect(x + ((80 - KEY_W) / 2), y + ((80 - KEY_H) / 2), KEY_W, KEY_H, r, !invert ? fr_color : bk_color);
+  tft.fillRoundRect(x + ((80 - KEY_W) / 2) + w, y + ((80 - KEY_H) / 2) + w, KEY_W - w * 2, KEY_H - w * 2, r - w, invert ? fr_color : bk_color);
+  if (keyLabel[n].substring(0, 1) != "/") {
+    tft.drawString(keyLabel[n], x + 40, y + 40, fr_color);
+  }
+  else {
+    drawXBM(keyLabel[n]);
+    tft.drawXBitmap(x + 40 - 48 / 2, y + 40 - 48 / 2, imageBits, 48, 48, !invert ? fr_color : bk_color);
+  }
 }
