@@ -18,8 +18,10 @@ TFT_eSPI tft = TFT_eSPI();  // Invoke custom library
 // uint16_t x, y, last_x, last_y;
 // boolean touch;
 
-uint16_t fr_color = tft.color565(3, 230, 250);
-uint16_t bk_color = tft.color565(65, 0, 87);
+uint16_t fr_color = TFT_YELLOW;
+uint16_t bk_color = TFT_BLACK;
+// uint16_t fr_color = tft.color565(3, 230, 250);
+// uint16_t bk_color = tft.color565(65, 0, 87);
 
 // Keypad start position, key sizes and spacing
 #define KEY_X 40 // Centre of key
@@ -30,8 +32,10 @@ uint16_t bk_color = tft.color565(65, 0, 87);
 #define KEY_SPACING_Y 10
 #define KEY_TEXTSIZE 1   // Font size multiplier
 
-String keyLabel[12] = {"/lamp.xbm", "2", "3", "Light", "5", "6", "7", "Fan", "9", "10", "11", "Stop" };
+String keyLabel[12] = {"1", "2", "3", "BS+", "5", "6", "7", "/lamp.xbm", "/table.xbm", "/hotend.xbm", "11", "Stop" };
+// String keyLabel[12] = {"/lamp.xbm", "2", "3", "Light", "5", "6", "7", "Fan", "9", "10", "11", "Stop" };
 uint8_t imageBits[512];
+int16_t imageWidth=0, imageHeight=0;
 
 TFT_eSPI_Button key[12];
 
@@ -59,24 +63,24 @@ void setup()
   tft.setTextFont(4);
   tft.setTextDatum(CC_DATUM);
 
-  // drawXBM();
+  // drawXBM("/lamp.xbm");
+  // tft.drawString("keyLabel[11]", 40, 40, 4);
   // delay(10000);
   
 // Draw the keys
-  // for (uint8_t row = 0; row < 3; row++) {
-  //   for (uint8_t col = 0; col < 4; col++) {
-  //     uint8_t b = col + row * 4;
+  for (uint8_t row = 0; row < 3; row++) {
+    for (uint8_t col = 0; col < 4; col++) {
+      uint8_t b = col + row * 4;
 
-  //     // if (b < 3) tft.setFreeFont(LABEL1_FONT);
-  //     // else tft.setFreeFont(LABEL2_FONT);
+      // if (b < 3) tft.setFreeFont(LABEL1_FONT);
+      // else tft.setFreeFont(LABEL2_FONT);
 
-  //     key[b].initButton(&tft, KEY_X + col * (KEY_W + KEY_SPACING_X),
-  //                       KEY_Y + row * (KEY_H + KEY_SPACING_Y), // x, y, w, h, outline, fill, text
-  //                       KEY_W, KEY_H, fr_color, bk_color, fr_color,
-  //                       "", KEY_TEXTSIZE);
-  //     key[b].drawButton();
-  //   }
-  // }
+      key[b].initButton(&tft, KEY_X + col * (KEY_W + KEY_SPACING_X),
+                        KEY_Y + row * (KEY_H + KEY_SPACING_Y), // x, y, w, h, outline, fill, text
+                        KEY_W, KEY_H, fr_color, bk_color, fr_color, (char *)"", KEY_TEXTSIZE);
+      // key[b].drawButton();
+    }
+  }
 
   for (uint8_t n = 0; n < 12; n++) {
       draw_button(n, 0);
@@ -246,7 +250,7 @@ void drawXBM(String filename){
   }
   File imagefile = SPIFFS.open(filename);
   String xbm;
-  int16_t imageWidth=0, imageHeight=0;
+  // int16_t imageWidth=0, imageHeight=0;
   // uint8_t imageBits[imagefile.size()/4]; //This seems inefficient
   uint16_t pos = 0;
   const char CR = 10;
@@ -285,17 +289,18 @@ void drawXBM(String filename){
 
 void draw_button(uint8_t n, bool invert) {
   const uint16_t w = 2;
-  const uint16_t r = 10;
+  const uint16_t r = 16;
   uint16_t x = (n % 4) * 80;
   uint16_t y = (int)(n / 4) * 80;
 
   tft.fillRoundRect(x + ((80 - KEY_W) / 2), y + ((80 - KEY_H) / 2), KEY_W, KEY_H, r, !invert ? fr_color : bk_color);
   tft.fillRoundRect(x + ((80 - KEY_W) / 2) + w, y + ((80 - KEY_H) / 2) + w, KEY_W - w * 2, KEY_H - w * 2, r - w, invert ? fr_color : bk_color);
-  if (keyLabel[n].substring(0, 1) != "/") {
-    tft.drawString(keyLabel[n], x + 40, y + 40, fr_color);
+  if (keyLabel[n].substring(0,1) != "/") {
+    tft.setTextColor(!invert ? fr_color : bk_color);
+    tft.drawString(keyLabel[n], x + 40, y + 40);
   }
   else {
     drawXBM(keyLabel[n]);
-    tft.drawXBitmap(x + 40 - 48 / 2, y + 40 - 48 / 2, imageBits, 48, 48, !invert ? fr_color : bk_color);
+    tft.drawXBitmap(x + 40 - imageWidth / 2, y + 40 - imageHeight / 2, imageBits, imageWidth, imageHeight, !invert ? fr_color : bk_color);
   }
 }
