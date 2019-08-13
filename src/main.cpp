@@ -14,12 +14,8 @@ TFT_eSPI tft = TFT_eSPI();  // Invoke custom library
 // Repeat calibration if you change the screen rotation.
 #define REPEAT_CAL false
 
-// long count = 0; // Loop count
-// uint16_t x, y, last_x, last_y;
-// boolean touch;
-
-uint16_t fr_color = TFT_YELLOW;
-uint16_t bk_color = TFT_BLACK;
+uint16_t fr_color = TFT_YELLOW; // основной цвет
+uint16_t bk_color = TFT_BLACK;  // цвет фона
 // uint16_t fr_color = tft.color565(3, 230, 250);
 // uint16_t bk_color = tft.color565(65, 0, 87);
 
@@ -32,89 +28,91 @@ uint16_t bk_color = TFT_BLACK;
 #define KEY_SPACING_Y 10
 #define KEY_TEXTSIZE 1   // Font size multiplier
 
+// названия кнопок
+// если начинается с "/", то рисуется иконка с соответствующем именем
+// иначе выводится текстовый "лейбл"
 String keyLabel[12] = {"1", "2", "3", "BS+", "5", "6", "7", "/lamp.xbm", "/table.xbm", "/hotend.xbm", "11", "Stop" };
-// String keyLabel[12] = {"/lamp.xbm", "2", "3", "Light", "5", "6", "7", "Fan", "9", "10", "11", "Stop" };
-uint8_t imageBits[512];
-int16_t imageWidth=0, imageHeight=0;
+
+uint8_t imageBits[512];               // массив с данными XBM
+int16_t imageWidth=0, imageHeight=0;  // ширина и высота XBM
 
 TFT_eSPI_Button key[12];
 
+// статусы кнопок
+// (не нажата, нажата, только-что нажата, удерживается, отпущена)
 typedef enum { IDLE, PRESSED, JUSTPRESSED, HOLD, RELEASED } KeyState;
 KeyState buttonState[12];
 const char* status_str[5] = { "IDLE", "PRESSED", "JUSTPRESSED", "HOLD", "RELEASED" };
-#define HOLDTIME 1000
-#define CHECK_DELAY 100
+#define HOLDTIME 1000               // время после которого считается удержание кнопки, мс
+#define CHECK_DELAY 100             // время между опросами (антидребезг), мс
+bool ACTION;                        // какое-то действие с кнопками
 
+// прототипы функций
 void touch_calibrate();
 void check_and_set_button_state();
-void drawXBM(String filename);
+void readXBM(String filename);
 void draw_button(uint8_t n, bool invert);
 
 void setup()
 {
   Serial.begin(115200);
   tft.begin();
-  tft.setRotation(3);	// landscape
-  tft.setSwapBytes(true); // Swap the colour byte order when rendering
+  tft.setRotation(3);	        // ориентация экрана
+  tft.setSwapBytes(true);     // Swap the colour byte order when rendering
   
-  touch_calibrate();  // Calibrate the touch screen and retrieve the scaling factors
+  touch_calibrate();          // загрузка данных калибровки, либо перекалибровка
 
   tft.fillScreen(bk_color);
   tft.setTextFont(4);
   tft.setTextDatum(CC_DATUM);
 
-  // drawXBM("/lamp.xbm");
-  // tft.drawString("keyLabel[11]", 40, 40, 4);
-  // delay(10000);
-  
-// Draw the keys
-  for (uint8_t row = 0; row < 3; row++) {
-    for (uint8_t col = 0; col < 4; col++) {
-      uint8_t b = col + row * 4;
+// рисум кнопки
+  // for (uint8_t row = 0; row < 3; row++) {
+  //   for (uint8_t col = 0; col < 4; col++) {
+  //     uint8_t b = col + row * 4;
 
-      // if (b < 3) tft.setFreeFont(LABEL1_FONT);
-      // else tft.setFreeFont(LABEL2_FONT);
-
-      key[b].initButton(&tft, KEY_X + col * (KEY_W + KEY_SPACING_X),
-                        KEY_Y + row * (KEY_H + KEY_SPACING_Y), // x, y, w, h, outline, fill, text
-                        KEY_W, KEY_H, fr_color, bk_color, fr_color, (char *)"", KEY_TEXTSIZE);
-      // key[b].drawButton();
-    }
-  }
+  //     key[b].initButton(&tft, KEY_X + col * (KEY_W + KEY_SPACING_X),
+  //                       KEY_Y + row * (KEY_H + KEY_SPACING_Y), // x, y, w, h, outline, fill, text
+  //                       KEY_W, KEY_H, fr_color, bk_color, fr_color, (char *)"", KEY_TEXTSIZE);
+  //     // key[b].drawButton();
+  //   }
+  // }
 
   for (uint8_t n = 0; n < 12; n++) {
       draw_button(n, 0);
   }
 
 }
-
+//==============
+// Главный цикл
+//==============
 void loop()
 {
   static uint32_t tmr;
   if (millis() - tmr > CHECK_DELAY) {
   tmr = millis();
 
+  // проверяем статус кнопок
   check_and_set_button_state();
 
   for (uint8_t b = 0; b < 12; b++) {
-
     if (buttonState[b] == RELEASED){
-      // key[b].drawButton();     // draw normal
-      // Serial.print("Key "); Serial.print(keyLabel[b]); Serial.println(" Released");
-      draw_button(b, 0);
+      draw_button(b, 0);      // если отпущена - перерисовываем
     } 
-
     if (buttonState[b] == JUSTPRESSED) {
-      // key[b].drawButton(true);  // draw invert
-      draw_button(b, 1);
+      draw_button(b, 1);      // если нажата - рисуем с инверсией
     }
 
-    if (buttonState[b] != IDLE) {Serial.print("Key "); Serial.print(keyLabel[b]); Serial.println(status_str[buttonState[b]]);}
+    if (ACTION) {Serial.print("Key "); Serial.print(keyLabel[b]); Serial.println(status_str[buttonState[b]]);}
   }
   }
 }
 
 
+//=========================================================
+// Начальная калибровка тача
+// перекалибровка, сохранение и загрузка данных калибровки
+//=========================================================
 void touch_calibrate() {
   
   uint16_t calData[5];
@@ -180,22 +178,31 @@ void touch_calibrate() {
   }
 }
 
+//==========================
+// Проверка нажатия
+// установка статуса кнопок
+//==========================
 void check_and_set_button_state() {
-  uint16_t t_x = 0, t_y = 0;                   // To store the touch coordinates
-  boolean pressed = tft.getTouch(&t_x, &t_y);  // Pressed will be set true is there is a valid touch on the screen
-  static uint32_t hold_tmr;
 
+  static uint32_t hold_tmr;
+  uint16_t t_x = 0, t_y = 0;                   // To store the touch coordinates
+
+  ACTION = false;
+  boolean pressed = tft.getTouch(&t_x, &t_y);  // Pressed will be set true is there is a valid touch on the screen
+  uint8_t n = ((int)(t_y / 80) * 4) + (int)(t_x / 80);
   // / Check if any key coordinate boxes contain the touch coordinates
   for (uint8_t b = 0; b < 12; b++) {
-    if (pressed && key[b].contains(t_x, t_y)) {
+    if (pressed && b == n) {
       switch (buttonState[b]){
             case IDLE:
                 buttonState[b] = JUSTPRESSED;
                 hold_tmr = millis();
+                ACTION = true;
                 break;
 
             case JUSTPRESSED:
                 buttonState[b] = PRESSED;
+                ACTION = true;
                 break;
                 
             case RELEASED:
@@ -203,7 +210,7 @@ void check_and_set_button_state() {
                 break;
 
             case PRESSED:
-                if (millis() - hold_tmr > HOLDTIME) {buttonState[b] = HOLD;}
+                if (millis() - hold_tmr > HOLDTIME) {buttonState[b] = HOLD; ACTION = true;}
                 break;
 
             case HOLD:
@@ -213,6 +220,7 @@ void check_and_set_button_state() {
       switch (buttonState[b]){
             case PRESSED:
                 buttonState[b] = RELEASED;
+                ACTION = true;
                 break;
 
             case RELEASED:
@@ -221,10 +229,12 @@ void check_and_set_button_state() {
 
             case JUSTPRESSED:
                 buttonState[b] = RELEASED;
+                ACTION = true;
                 break;
 
             case HOLD:
                 buttonState[b] = RELEASED;
+                ACTION = true;
                 break;
 
             case IDLE:
@@ -234,24 +244,16 @@ void check_and_set_button_state() {
   }
 }
 
-void drawXBM(String filename){
-  // SPIFFS.open("lamp.xbm", "r")
-  // xbm_data = file.read()
-  // SPIFFS.close()
-  // tft.drawXBitmap(x, y, logo, logoWidth, logoHeight, TFT_WHITE);
-
-  // const char *filename = "/lamp.xbm";
-  // if (!filename) return;
-  // Serial.print("Reading ");
-  // Serial.println(filename);
+//============================
+// Чтение XBM файла из SPIFFS
+//============================
+void readXBM(String filename){
   if (!SPIFFS.exists(filename)) {
     // Serial.println("File not found");
     return;
   }
   File imagefile = SPIFFS.open(filename);
   String xbm;
-  // int16_t imageWidth=0, imageHeight=0;
-  // uint8_t imageBits[imagefile.size()/4]; //This seems inefficient
   uint16_t pos = 0;
   const char CR = 10;
   const char comma = 44;
@@ -262,18 +264,10 @@ void drawXBM(String filename){
         if (xbm.indexOf("_width ")>0) {
           xbm.remove(0,xbm.lastIndexOf(" "));
           imageWidth = xbm.toInt();
-          // if (imageWidth > 320) {
-          //   Serial.println("Image too large for screen");
-          //   return;
-          // }
         } 
         if (xbm.indexOf("_height ")>0) {
           xbm.remove(0,xbm.lastIndexOf(" "));
           imageHeight=xbm.toInt();
-          // if (imageHeight > 240) {
-          //   Serial.println("Image too large for screen");
-          //   return;
-          // }
         }
       }
       xbm = "";
@@ -284,12 +278,14 @@ void drawXBM(String filename){
   }
   imageBits[pos++] = (int) strtol(xbm.c_str(), NULL, 16); //turn the string into a character
   imageBits[pos]=0;
-  // tft.drawXBitmap(10, 10, imageBits, imageWidth, imageHeight, TFT_YELLOW);
 }
 
+//===============================
+// Отрисовка кнопки по её номеру
+//===============================
 void draw_button(uint8_t n, bool invert) {
-  const uint16_t w = 2;
-  const uint16_t r = 16;
+  const uint16_t w = 2;   // толщина контура кнопок
+  const uint16_t r = 16;  // радиус скругления
   uint16_t x = (n % 4) * 80;
   uint16_t y = (int)(n / 4) * 80;
 
@@ -300,7 +296,7 @@ void draw_button(uint8_t n, bool invert) {
     tft.drawString(keyLabel[n], x + 40, y + 40);
   }
   else {
-    drawXBM(keyLabel[n]);
+    readXBM(keyLabel[n]);
     tft.drawXBitmap(x + 40 - imageWidth / 2, y + 40 - imageHeight / 2, imageBits, imageWidth, imageHeight, !invert ? fr_color : bk_color);
   }
 }
