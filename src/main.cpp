@@ -1,9 +1,8 @@
 #include "FS.h"
-
 #include <SPI.h>
-#include <TFT_eSPI.h>       // Hardware-specific library
+#include <TFT_eSPI.h>
 
-TFT_eSPI tft = TFT_eSPI();  // Invoke custom library
+TFT_eSPI tft = TFT_eSPI();
 
 // This is the file name used to store the calibration data
 // You can change this to create new calibration files.
@@ -19,39 +18,45 @@ uint16_t bk_color = TFT_BLACK;  // цвет фона
 // uint16_t fr_color = tft.color565(3, 230, 250);
 // uint16_t bk_color = tft.color565(65, 0, 87);
 
-// Keypad start position, key sizes and spacing
-#define KEY_X 40 // Centre of key
-#define KEY_Y 40
-#define KEY_W 70 // Width and height
-#define KEY_H 70
-#define KEY_SPACING_X 10 // X and Y gap
-#define KEY_SPACING_Y 10
-#define KEY_TEXTSIZE 1   // Font size multiplier
 
 // названия кнопок
 // если начинается с "/", то рисуется иконка с соответствующем именем
 // иначе выводится текстовый "лейбл"
-String keyLabel[12] = {"1", "2", "3", "BS+", "5", "6", "7", "/lamp.xbm", "/table.xbm", "/hotend.xbm", "11", "Stop" };
+String keyLabel[12] = {"/arrow_up.xbm",   "/home.xbm",      "/fil_in.xbm",  "BS+",
+                       "/arrow_down.xbm", "/fan.xbm",       "/fil_out.xbm", "BS-",
+                       "/hot.xbm",        "/exstruder.xbm", "/lampa.xbm",   "/pause.xbm" };
 
-uint8_t imageBits[512];               // массив с данными XBM
-int16_t imageWidth=0, imageHeight=0;  // ширина и высота XBM
+uint8_t imageBits[512];              // массив с данными XBM
+int16_t imageWidth=0, imageHeight=0; // ширина и высота XBM
 
-TFT_eSPI_Button key[12];
+bool  holding;                       //признак удержания клавиши
+uint8_t fan_speeed = 0;              //скорость вентилятора
+boolean case_light = 1;              //флаг подсветки корпуса
+boolean table_on = 0;                //флаг включения стола
+boolean hotend_on = 0;               //флаг включения хотэнда
+uint16_t target_hotend_temp = 220;   //температура хотэнда
+uint16_t table_temp1 = 70;           //температура стола 1
+uint16_t table_temp2 = 100;          //температура стола 2
 
 // статусы кнопок
 // (не нажата, нажата, только-что нажата, удерживается, отпущена)
 typedef enum { IDLE, PRESSED, JUSTPRESSED, HOLD, RELEASED } KeyState;
 KeyState buttonState[12];
-const char* status_str[5] = { "IDLE", "PRESSED", "JUSTPRESSED", "HOLD", "RELEASED" };
-#define HOLDTIME 1000               // время после которого считается удержание кнопки, мс
-#define CHECK_DELAY 100             // время между опросами (антидребезг), мс
-bool ACTION;                        // какое-то действие с кнопками
+const char* status_str[5] = { "IDLE", "PRESSED", "JUSTPRESSED", "HOLD", "RELEASED" }; //для отладки
+#define HOLDTIME 1000                // время после которого считается удержание кнопки, мс
+#define CHECK_DELAY 100              // время между опросами (антидребезг), мс
+#define KEY_W 70                     // ширина и высота кнопки
+#define KEY_H 70
+bool ACTION;                         // какое-то действие с кнопками
+bool MOTION_UP;                      // движение оси вверх
+bool MOTION_DOWN;                    // движение оси вниз
 
 // прототипы функций
 void touch_calibrate();
 void check_and_set_button_state();
 void readXBM(String filename);
 void draw_button(uint8_t n, bool invert);
+void send_gcode(uint8_t num);
 
 void setup()
 {
@@ -66,18 +71,7 @@ void setup()
   tft.setTextFont(4);
   tft.setTextDatum(CC_DATUM);
 
-// рисум кнопки
-  // for (uint8_t row = 0; row < 3; row++) {
-  //   for (uint8_t col = 0; col < 4; col++) {
-  //     uint8_t b = col + row * 4;
-
-  //     key[b].initButton(&tft, KEY_X + col * (KEY_W + KEY_SPACING_X),
-  //                       KEY_Y + row * (KEY_H + KEY_SPACING_Y), // x, y, w, h, outline, fill, text
-  //                       KEY_W, KEY_H, fr_color, bk_color, fr_color, (char *)"", KEY_TEXTSIZE);
-  //     // key[b].drawButton();
-  //   }
-  // }
-
+  // рисум кнопки
   for (uint8_t n = 0; n < 12; n++) {
       draw_button(n, 0);
   }
@@ -103,7 +97,7 @@ void loop()
       draw_button(b, 1);      // если нажата - рисуем с инверсией
     }
 
-    if (ACTION) {Serial.print("Key "); Serial.print(keyLabel[b]); Serial.println(status_str[buttonState[b]]);}
+    if (ACTION && buttonState[b] != IDLE)  { send_gcode(b); }
   }
   }
 }
@@ -188,9 +182,9 @@ void check_and_set_button_state() {
   uint16_t t_x = 0, t_y = 0;                   // To store the touch coordinates
 
   ACTION = false;
-  boolean pressed = tft.getTouch(&t_x, &t_y);  // Pressed will be set true is there is a valid touch on the screen
-  uint8_t n = ((int)(t_y / 80) * 4) + (int)(t_x / 80);
-  // / Check if any key coordinate boxes contain the touch coordinates
+  boolean pressed = tft.getTouch(&t_x, &t_y);             // Получаем координаты от тача
+  uint8_t n = ((int)(t_y / 80) * 4) + (int)(t_x / 80);    // Вычисляем по ним номер кнопки
+
   for (uint8_t b = 0; b < 12; b++) {
     if (pressed && b == n) {
       switch (buttonState[b]){
@@ -298,5 +292,224 @@ void draw_button(uint8_t n, bool invert) {
   else {
     readXBM(keyLabel[n]);
     tft.drawXBitmap(x + 40 - imageWidth / 2, y + 40 - imageHeight / 2, imageBits, imageWidth, imageHeight, !invert ? fr_color : bk_color);
+  }
+}
+
+void send_gcode(uint8_t num) {
+  // Serial.print("Key "); Serial.print(keyLabel[num]); Serial.println(status_str[buttonState[num]]);
+
+  switch (num + 1){
+    case 1:   //клавиша "1"
+              //стол вверх на 1мм, при удержании - постоянно
+      switch (buttonState[num]){
+        case JUSTPRESSED:
+            break;
+        case RELEASED:
+            if (holding) {
+              MOTION_UP = false;
+            }
+            else {
+              { Serial.println("G91"); Serial.println("G01 Z-1 F600"); Serial.println("G90"); }
+            }
+            holding = false;
+            break;
+        case HOLD:
+            holding = true;
+            MOTION_UP = true;
+            break;
+      }
+    break;
+
+    case 2:
+      switch (buttonState[num]){
+        case PRESSED:
+            break;
+        case RELEASED:
+            break;
+        case JUSTPRESSED:
+            break;
+        case HOLD:
+            break;
+      }
+    break;
+    
+    case 3:
+      switch (buttonState[num]){
+        case PRESSED:
+            break;
+        case RELEASED:
+            break;
+        case JUSTPRESSED:
+            break;
+        case HOLD:
+            break;
+      }
+    break;
+
+    case 4:   //клавиша "4"
+              //"BABYSTEPPING+" увеличивает толщину слоя на 0.05мм
+      switch (buttonState[num]){
+        case JUSTPRESSED:
+            Serial.println("M290 Z0.05");
+            break;
+        case RELEASED:
+            break;
+        case HOLD:
+            break;
+      }
+    break;
+
+    case 5:   //клавиша "5"
+              //стол вниз на 1мм, при удержании - постоянно
+      switch (buttonState[num]){
+        case JUSTPRESSED:
+            break;
+        case RELEASED:
+            if (holding) {
+              MOTION_DOWN = false;
+            }
+            else {
+              { Serial.println("G91"); Serial.println("G01 Z1 F600"); Serial.println("G90"); }
+            }
+            holding = false;
+            break;
+        case HOLD:
+            holding = true;
+            MOTION_DOWN = true;
+            break;
+      }
+    break;
+
+    case 6:   //клавиша "12"
+              //скорость вентилятора обдува детали 0%-->25%-->50%-->75%-->100%-->0%
+              //удержарие - 100%
+      switch (buttonState[num]){
+        case JUSTPRESSED:
+            fan_speeed++;
+            if (fan_speeed == 5) fan_speeed = 0;
+            switch (fan_speeed) {
+                case 0:
+                    Serial.println("M107");
+                    Serial.println("M117 FAN OFF");
+                    break;
+                case 1:
+                    Serial.println("M106 S64");
+                    Serial.println("M117 FAN 25%");
+                    break;
+                case 2:
+                    Serial.println("M106 S128");
+                    Serial.println("M117 FAN 50%");
+                    break;
+                case 3:
+                    Serial.println("M106 S192");
+                    Serial.println("M117 FAN 75%");
+                    break;
+                case 4:
+                    Serial.println("M106");
+                    Serial.println("M117 FAN 100%");
+                    break;
+            }
+            break;
+        case RELEASED:
+            break;
+        case HOLD:
+            Serial.println("M106");
+            Serial.println("M117 FAN 100%");
+            fan_speeed = 0;
+            break;
+      }
+    break;
+
+    case 7:
+      switch (buttonState[num]){
+        case PRESSED:
+            break;
+        case RELEASED:
+            break;
+        case JUSTPRESSED:
+            break;
+        case HOLD:
+            break;
+      }
+    break;
+
+    case 8:   //клавиша "8"
+              //"BABYSTEPPING-" уменьшает толщину слоя на 0.05мм
+      switch (buttonState[num]){
+        case JUSTPRESSED:
+            Serial.println("M290 Z-0.05");
+            break;
+        case RELEASED:
+            break;
+        case HOLD:
+            break;
+      }
+    break;
+
+    case 9:
+      switch (buttonState[num]){
+        case PRESSED:
+            break;
+        case RELEASED:
+            break;
+        case JUSTPRESSED:
+            break;
+        case HOLD:
+            break;
+      }
+    break;
+
+    case 10:
+      switch (buttonState[num]){
+        case PRESSED:
+            break;
+        case RELEASED:
+            break;
+        case JUSTPRESSED:
+            break;
+        case HOLD:
+            break;
+      }
+    break;
+
+    case 11:    //клавиша "11"
+                //подсветка корпуса вкл/выкл (на 100%), при удержании вкл. на 50%
+      switch (buttonState[num]){
+        case JUSTPRESSED:
+            break;
+        case RELEASED:
+            if (!holding) {
+              if (case_light) {
+                Serial.println("M355 S0");
+                case_light = false;
+              }
+              else {
+                Serial.println("M355 S1 P255");
+                case_light = true;
+              }
+            }
+            holding = false;
+            break;
+        case HOLD:
+            Serial.println("M355 S1 P128");
+            case_light = true; 
+            holding = true;
+            break;
+      }
+    break;
+
+    case 12:
+      switch (buttonState[num]){
+        case PRESSED:
+            break;
+        case RELEASED:
+            break;
+        case JUSTPRESSED:
+            break;
+        case HOLD:
+            break;
+      }
+    break;
+
   }
 }
